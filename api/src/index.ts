@@ -1,9 +1,9 @@
 import dotenv from "dotenv";
+dotenv.config();
+console.log(process.env.DB_URL)
 import app from "./app.js";
 import pool from "./config/db.js";
 import redis from "./config/redis.js";
-
-dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 

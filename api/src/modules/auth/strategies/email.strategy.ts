@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { emailQueue } from "../../../config/queue.js";
 import { isStrongPassword } from "../../../utils/strongPassword.js";
+import { signAccessToken, signRefreshToken } from "../../../utils/jwt.js";
 
 export async function emailSignUpStrategy(email: string, password: string)
 {
@@ -115,4 +116,39 @@ export async function emailSignUpStrategy(email: string, password: string)
   {
     client.release();
   }
+}
+
+
+export async function emailLoginStrategy(email: string, password: string)
+{
+  if (!email || !password)
+  {
+    throw new Error("Email and password required");
+  }
+  const user=await findUserByEmail(email);
+  if(!user){
+    throw new Error("No account was found")
+  }
+  const password_hash=await pool.query(`
+    select password_hash from accounts where 
+    provider=$1 and user_id=$2
+    `,["email",user.id])
+  if(password_hash.rowCount===0){
+    throw new Error("This account isn't binded with email sir")
+  }
+  const compare=bcrypt.compare(password,password_hash.rows[0])
+  if(!compare){
+    throw new Error("Incorrect password sir")
+  }
+  const payload={
+    userId:user.id,
+    tokenVersion:user.token_version
+  }
+  const access_token=signAccessToken(payload);
+  const refresh_token=signRefreshToken(payload);
+  return ({
+    access_token,
+    refresh_token
+  })
+  
 }

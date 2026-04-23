@@ -6,9 +6,21 @@ export type signUpBody=
   password:string
 }|
 {
-  provider:"google"|"github"
+  provider:authProviders
   oauthToken:string
 }
 
+export type loginBody=
+|
+{
+  provider:"email",
+  email:string,
+  password:string
+}|
+{
+  provider:authProviders,
+  token:string 
+}
 
-export type provider="email"|"google"|"github"
+
+export type authProviders="google"|"github"
