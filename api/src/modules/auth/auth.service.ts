@@ -7,6 +7,7 @@ import { githubSignUpStrategy } from "./strategies/github.strategy.js";
 import { googleSignUpStrategy } from "./strategies/google.strategy.js";
 import bcrypt from "bcrypt";
 import { isStrongPassword } from "../../utils/strongPassword.js";
+import { emailQueue } from "../../config/queue.js";
 export async function signUpService(input:signUpBody) {
   if(input.provider==="email"){
     return await emailSignUpStrategy(input.email,input.password);
@@ -133,4 +134,119 @@ export async function changePasswordService(
   {
     client.release();
   }
+}
+
+export async function verifyEmailService(token:string) {
+  const res=await pool.query(`
+    select user_id, expires_at 
+    from email_verifications 
+    where token=$1
+    `,[token])
+  const record=res.rows[0];
+  if(!record){
+    throw new Error("Invalid token")
+  }
+  if(new Date()>record.expires_at){
+    throw new Error("Token expired")
+  }
+  await pool.query(`
+    update users set email_verified=true
+    where id=$1
+    `,[record.user_id]);
+
+  await pool.query(`
+    delete from email_verifications
+    where user_id=$1
+    `,[record.user_id]);
+
+  return {
+    success: true,
+    message: "Email verified successfully"
+  };
+}
+
+export async function forgotPasswordService(email: string) {
+  const normalizedEmail = email.toLowerCase().trim();
+
+  const userRes = await pool.query(
+    `SELECT id FROM users WHERE email = $1`,
+    [normalizedEmail]
+  );
+
+  const user = userRes.rows[0];
+  if (!user) {
+    return { message: "If account exists, email sent" };
+  }
+
+  const userId = user.id;
+  const token = require("node:crypto").randomBytes(32).toString("hex");
+  const tokenHash = require("node:crypto").createHash("sha256").update(token).digest("hex");
+
+  const expires = new Date(Date.now() + 1000 * 60 * 15); // 15 min
+  await pool.query(
+    `INSERT INTO password_resets (user_id, token_hash, expires_at)
+     VALUES ($1, $2, $3)`,
+    [userId, tokenHash, expires]
+  );
+
+  // Add to email queue for sending reset email
+  await emailQueue.add("send-reset-email", { email: normalizedEmail, token });
+
+  return { message: "If account exists, email sent" };
+}
+
+export async function verifyForgotPasswordService(token: string, newPassword: string) {
+  if (!isStrongPassword(newPassword)) {
+    throw new Error("Weak password");
+  }
+
+  const tokenHash = require("node:crypto").createHash("sha256").update(token).digest("hex");
+
+  const res = await pool.query(
+    `SELECT user_id, expires_at, used
+     FROM password_resets
+     WHERE token_hash = $1`,
+    [tokenHash]
+  );
+
+  const record = res.rows[0];
+
+  if (!record) {
+    throw new Error("Invalid token");
+  }
+
+  if (record.used) {
+    throw new Error("Token already used");
+  }
+
+  if (new Date() > record.expires_at) {
+    throw new Error("Token expired");
+  }
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+  await pool.query(
+    `UPDATE accounts
+     SET password_hash = $1
+     WHERE user_id = $2 AND provider = 'email'`,
+    [hashed, record.user_id]
+  );
+
+  await pool.query(
+    `UPDATE password_resets
+     SET used = true
+     WHERE token_hash = $1`,
+    [tokenHash]
+  );
+
+  await pool.query(
+    `UPDATE users 
+     SET token_version = token_version + 1 
+     WHERE id = $1`,
+    [record.user_id]
+  );
+
+  return {
+    success: true,
+    message: "Password reset successfully. Please login with your new password."
+  };
 }

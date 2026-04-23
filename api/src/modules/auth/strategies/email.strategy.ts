@@ -149,6 +149,5 @@ export async function emailLoginStrategy(email: string, password: string)
   return ({
     access_token,
     refresh_token
-  })
-  
+  }) 
 }

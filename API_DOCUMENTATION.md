@@ -67,7 +67,8 @@ Authorization: Bearer <access_token_here>
 4. [Request/Response Formats](#requestresponse-formats)
 5. [Error Handling](#error-handling)
 6. [Authentication Methods](#authentication-methods)
-7. [Security](#security)
+7. [Password Recovery](#password-recovery)
+8. [Security](#security)
 
 ---
 
@@ -342,10 +343,199 @@ Content-Type: application/json
 }
 ```
 
+**Response (Error - 401, No Token):**
+```json
+{
+  "error": "No token provided"
+}
+```
+
 **Field Requirements:**
 - **oldPassword**: Current password (must be correct)
 - **newPassword**: New password (must meet strength requirements)
 - **confirmPassword**: Confirm new password (must match newPassword exactly)
+
+---
+
+### 6. Verify Email
+**Verify user email address with token**
+
+**Endpoint:** `GET /verify-email`
+
+**Query Parameters:**
+```
+?token=verification_token_here
+```
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": "Email verified successfully"
+}
+```
+
+**Response (Error - 400, Invalid Token):**
+```json
+{
+  "error": "Invalid or expired token"
+}
+```
+
+**Response (Error - 400, Token Already Used):**
+```json
+{
+  "error": "Token already used"
+}
+```
+
+**Flow:**
+1. User receives verification email after signup
+2. User clicks verification link with token
+3. Frontend sends GET request to `/verify-email?token=...`
+4. Server validates token expiry (15 minutes)
+5. Server marks email as verified
+6. Token is marked as used and cannot be reused
+
+---
+
+### 7. Forgot Password
+**Request password reset email**
+
+**Endpoint:** `POST /forgot-password`
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "email": "user@example.com"
+}
+```
+
+**Response (Success - 200):**
+```json
+{
+  "message": "If account exists, email sent"
+}
+```
+
+**Response (Error - 400, Missing Email):**
+```json
+{
+  "error": "Email required"
+}
+```
+
+**Security Note:**
+- Response is the same whether email exists or not (prevents email enumeration)
+- Reset token sent via email contains a valid reset token
+- Token expires in 15 minutes
+- User must receive the email to reset password
+
+**Flow:**
+1. User enters email address
+2. Server checks if user exists
+3. Server generates secure reset token
+4. Reset email is queued to be sent (via Bull Queue)
+5. Same response sent regardless of whether email exists (security)
+6. Email worker sends reset email with link containing token
+
+---
+
+### 8. Reset Password
+**Reset user password with verification token**
+
+**Endpoint:** `POST /reset-password`
+
+**Request Headers:**
+```
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "token": "reset_token_from_email",
+  "newPassword": "NewPassword123!",
+  "confirmPassword": "NewPassword123!"
+}
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": "Password reset successfully. Please login with your new password."
+}
+```
+
+**Response (Error - 400, Invalid Token):**
+```json
+{
+  "error": "Invalid token"
+}
+```
+
+**Response (Error - 400, Expired Token):**
+```json
+{
+  "error": "Token expired"
+}
+```
+
+**Response (Error - 400, Token Already Used):**
+```json
+{
+  "error": "Token already used"
+}
+```
+
+**Response (Error - 400, Weak Password):**
+```json
+{
+  "error": "Weak password"
+}
+```
+
+**Response (Error - 400, Passwords Don't Match):**
+```json
+{
+  "error": "Passwords do not match"
+}
+```
+
+**Field Requirements:**
+- **token**: Reset token from email (must be valid and not expired)
+- **newPassword**: New password (must meet strength requirements)
+- **confirmPassword**: Confirm new password (must match newPassword exactly)
+
+**Password Requirements:**
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one special character
+
+**Flow:**
+1. User clicks password reset link in email with token
+2. Frontend captures the token from URL query parameter
+3. User enters new password and confirms it
+4. Frontend sends token and passwords to reset endpoint
+5. Server validates token (not expired, not already used)
+6. Server validates new password strength
+7. Server hashes new password and updates database
+8. Server increments token_version to invalidate all existing tokens
+9. Reset token marked as used (cannot be reused)
+10. User prompted to login with new password
 
 ---
 
@@ -556,6 +746,61 @@ curl -X POST http://localhost:3000/api/auth/change-password \
   }'
 ```
 
+### Example 8: Forgot Password
+```bash
+curl -X POST http://localhost:3000/api/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com"
+  }'
+```
+
+### Example 9: Reset Password
+```bash
+curl -X POST http://localhost:3000/api/auth/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "reset_token_from_email",
+    "newPassword": "NewPassword123!",
+    "confirmPassword": "NewPassword123!"
+  }'
+```
+
+### Example 10: Verify Email
+```bash
+curl -X GET "http://localhost:3000/api/auth/verify-email?token=verification_token_from_email"
+```
+
+---
+
+## Password Recovery
+
+### Forgot Password Flow
+The system provides a secure password recovery mechanism using time-limited tokens:
+
+1. **Request Reset:** User requests password reset by providing email
+2. **Token Generation:** Server generates a secure random token (32 bytes)
+3. **Token Storage:** Token hash stored in database with 15-minute expiration
+4. **Email Sending:** Reset email queued and sent to user with recovery link
+5. **Token Validation:** User clicks link and provides new password
+6. **Verification:** Server validates token (not expired, not already used)
+7. **Password Update:** New password hashed and stored, token marked as used
+8. **Token Invalidation:** User's token_version incremented (all old tokens invalidated)
+
+### Security Features
+- **One-Time Use:** Reset tokens marked as used after successful reset
+- **Time Limited:** Tokens expire in 15 minutes
+- **Secure Generation:** Tokens generated using crypto.randomBytes(32)
+- **Hash Storage:** Tokens hashed with SHA-256 before database storage
+- **Token Version:** All tokens invalidated when password is reset
+- **Email Safety:** Same response sent whether email exists or not (prevents enumeration)
+
+### Email Queue Integration
+- Password reset emails handled asynchronously via Bull Queue
+- Uses Redis for job queuing and processing
+- Separate worker process handles email dispatch
+- Failures logged and can be retried
+
 ---
 
 ## Flow Diagrams
@@ -579,6 +824,23 @@ curl -X POST http://localhost:3000/api/auth/change-password \
 4. Server generates new access token
 5. New access token returned to client
 6. Client stores new token and retries original request
+```
+
+### Password Recovery Flow
+```
+1. User enters email at forgot password page
+2. Client sends email to /forgot-password endpoint
+3. Server validates email and generates reset token
+4. Token hash stored in database with 15-minute expiration
+5. Reset email queued to be sent (Bull Queue)
+6. Email worker sends email with reset link + token
+7. User clicks link and enters new password
+8. Client sends token and new password to /reset-password
+9. Server validates token (not expired, not used)
+10. Server hashes new password and updates account
+11. Server marks reset token as used
+12. Server increments token_version (all tokens invalidated)
+13. User notified of successful reset, prompted to login
 ```
 
 ---
