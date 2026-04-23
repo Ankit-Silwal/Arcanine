@@ -1,6 +1,6 @@
-import type { loginBody, signUpBody } from "../types/auth.types.js";
+import type { changePasswordType, loginBody, signUpBody } from "../types/auth.types.js";
 import type { Request,Response } from "express";
-import { signUpService,loginService, refreshToken } from "./auth.service.js";
+import { signUpService,loginService, refreshToken, changePasswordService } from "./auth.service.js";
 export async function signUpController(
 req:Request<{},{},signUpBody>,res:Response)
 {
@@ -51,5 +51,44 @@ export async function refreshController(req:Request,res:Response){
     res.status(401).json({
       err:err?.message
     })
+  }
+}
+
+export async function logoutController(req:Request,res:Response){
+  res.clearCookie("refreshToken",{
+    httpOnly:true,
+    sameSite:"strict",
+    secure:false
+  })
+  return res.json({
+    message:"Successfully logout"
+  })
+}
+
+export async function changePassword(
+  req: Request<{}, {}, changePasswordType>,
+  res: Response
+)
+{
+  try
+  {
+    const userId = (req as any).user?.id;
+
+    if (!userId)
+    {
+      return res.status(401).json({
+        error: "Unauthorized"
+      });
+    }
+
+    const result = await changePasswordService(userId, req.body);
+
+    return res.json(result);
+  }
+  catch (err: any)
+  {
+    return res.status(400).json({
+      error: err.message || "Failed to change password"
+    });
   }
 }

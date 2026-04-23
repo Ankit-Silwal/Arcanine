@@ -22,5 +22,11 @@ export type loginBody=
   token:string 
 }
 
+export type changePasswordType=
+{
+  oldPassword:string,
+  newPassword:string,
+  confirmPassword:string
+}
 
 export type authProviders="google"|"github"

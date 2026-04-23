@@ -35,16 +35,49 @@ export default authRouter;
 
 ---
 
+## Protected Routes
+
+### Authentication Middleware
+The following routes require authentication using the `Authorization` header with a Bearer token (access token):
+
+- `POST /api/auth/refresh` - Requires valid access token
+- `POST /api/auth/logout` - Requires valid access token
+- `POST /api/auth/change-password` - Requires valid access token
+
+**Protected Route Headers:**
+```
+Authorization: Bearer <access_token_here>
+```
+
+**Middleware Flow:**
+1. Extract token from `Authorization: Bearer <token>` header
+2. Validate token format and signature
+3. Verify token hasn't expired
+4. Check user exists in database
+5. Verify token version matches (prevents using old tokens after logout)
+6. Attach user info to request and proceed to route handler
+7. Return 401 error if any validation fails
+
+---
+
 ## Table of Contents
-1. [Authentication Endpoints](#authentication-endpoints)
-2. [Request/Response Formats](#requestresponse-formats)
-3. [Error Handling](#error-handling)
-4. [Authentication Methods](#authentication-methods)
-5. [Security](#security)
+1. [Quick Start](#quick-start)
+2. [Authentication Endpoints](#authentication-endpoints)
+3. [Protected Routes](#protected-routes)
+4. [Request/Response Formats](#requestresponse-formats)
+5. [Error Handling](#error-handling)
+6. [Authentication Methods](#authentication-methods)
+7. [Security](#security)
 
 ---
 
 ## Authentication Endpoints
+
+### Public Endpoints
+The following endpoints do not require authentication:
+
+- `POST /api/auth/signup` - Create new user account
+- `POST /api/auth/login` - Authenticate user
 
 ### 1. Sign Up
 **Register a new user account**
@@ -170,9 +203,15 @@ refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 **Endpoint:** `POST /refresh`
 
+**Authentication:** Required (Access Token)
+```
+Authorization: Bearer <your_access_token_here>
+```
+
 **Request Headers:**
 ```
 Cookie: refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+Content-Type: application/json
 ```
 
 **Request Body:** None (refresh token comes from cookie)
@@ -189,7 +228,7 @@ Cookie: refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 **Response (Error - 401, No Token):**
 ```json
 {
-  "error": "No refresh token"
+  "error": "No token provided"
 }
 ```
 
@@ -199,6 +238,114 @@ Cookie: refreshToken=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
   "error": "Invalid refresh token"
 }
 ```
+
+---
+
+### 4. Logout
+**Clear user session and remove refresh token**
+
+**Endpoint:** `POST /logout`
+
+**Authentication:** Required (Access Token)
+```
+Authorization: Bearer <your_access_token_here>
+```
+
+**Request Headers:**
+```
+Authorization: Bearer <your_access_token_here>
+```
+
+**Request Body:** None
+
+**Response (Success - 200):**
+```json
+{
+  "message": "Successfully logout"
+}
+```
+
+**Response (Error - 401, No Token):**
+```json
+{
+  "error": "No token provided"
+}
+```
+
+---
+
+### 5. Change Password
+**Change user password with authentication**
+
+**Endpoint:** `POST /change-password`
+
+**Authentication:** Required (Access Token)
+```
+Authorization: Bearer <your_access_token_here>
+```
+
+**Request Headers:**
+```
+Authorization: Bearer <your_access_token_here>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "oldPassword": "CurrentPassword123!",
+  "newPassword": "NewPassword123!",
+  "confirmPassword": "NewPassword123!"
+}
+```
+
+**Response (Success - 200):**
+```json
+{
+  "success": true,
+  "message": "Password changed. Please login again."
+}
+```
+
+**Response (Error - 400, Passwords Don't Match):**
+```json
+{
+  "error": "Passwords do not match"
+}
+```
+
+**Response (Error - 400, Weak Password):**
+```json
+{
+  "error": "Password must be at least 8 characters with uppercase, lowercase, number, and special character"
+}
+```
+
+**Response (Error - 400, Same Password):**
+```json
+{
+  "error": "New password must be different"
+}
+```
+
+**Response (Error - 400, Wrong Old Password):**
+```json
+{
+  "error": "Incorrect old password"
+}
+```
+
+**Response (Error - 401, No Token):**
+```json
+{
+  "error": "No token provided"
+}
+```
+
+**Field Requirements:**
+- **oldPassword**: Current password (must be correct)
+- **newPassword**: New password (must meet strength requirements)
+- **confirmPassword**: Confirm new password (must match newPassword exactly)
 
 ---
 
@@ -381,6 +528,31 @@ curl -X POST http://localhost:3000/api/auth/login \
   -d '{
     "provider": "google",
     "token": "google_oauth_token"
+  }'
+```
+
+### Example 5: Refresh Token (Protected)
+```bash
+curl -X POST http://localhost:3000/api/auth/refresh \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Cookie: refreshToken=token_here"
+```
+
+### Example 6: Logout (Protected)
+```bash
+curl -X POST http://localhost:3000/api/auth/logout \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+### Example 7: Change Password (Protected)
+```bash
+curl -X POST http://localhost:3000/api/auth/change-password \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "oldPassword": "OldPassword123!",
+    "newPassword": "NewPassword123!",
+    "confirmPassword": "NewPassword123!"
   }'
 ```
 
