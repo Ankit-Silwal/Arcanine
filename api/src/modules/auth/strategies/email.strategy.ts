@@ -142,7 +142,7 @@ export async function emailLoginStrategy(email: string, password: string)
   }
   const payload={
     userId:user.id,
-    tokenVersion:user.token_version
+    token_version:user.token_version
   }
   const access_token=signAccessToken(payload);
   const refresh_token=signRefreshToken(payload);

@@ -1,3 +1,3 @@
-export function githubSignUpStrategy(oauthToken:string){
+export async function githubSignUpStrategy(oauthToken:string){
 
 }
