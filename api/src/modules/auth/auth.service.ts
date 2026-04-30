@@ -20,7 +20,7 @@ export async function signUpService(input:signUpBody) {
   }else{
     return ({
       success:false,
-      message:"Pass the both provider and shit"
+      message:"Pass the provider sir"
     })
   }
 }
